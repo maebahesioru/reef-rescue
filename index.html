@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reef Rescue — clean the reef, protect the wildlife</title>
+<meta name="description" content="Reef Rescue: dive into a coral reef, collect drifting plastic, watch your oxygen and don't touch the wildlife. A tiny browser game made for Technica 2026.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%230072B2'/%3E%3Cpath d='M4 20c4-3 8 3 12 0s8 3 12 0' stroke='%23e8f4fb' stroke-width='2.5' fill='none'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main id="app">
+  <div id="stage">
+    <canvas id="game" width="960" height="540" role="img"
+      aria-label="Underwater game view. You control a diver collecting drifting plastic. Use arrow keys or WASD to swim. Surface at the top to breathe."></canvas>
+
+    <div id="hud" class="hidden">
+      <div class="hud-box">Score <strong id="hud-score">0</strong></div>
+      <div class="hud-box">Level <strong id="hud-level">1</strong> · Cleaned <strong id="hud-items">0/12</strong></div>
+      <div class="hud-box" id="oxy-box" title="Oxygen — surface to refill">O₂ <span id="oxy-bar"><span id="oxy-fill"></span></span></div>
+      <div class="hud-box" id="hud-time">0:00</div>
+      <div class="hud-box hidden" id="hud-combo">x2</div>
+      <div class="hud-spacer"></div>
+      <button id="btn-mute" class="hud-btn" aria-pressed="false">Sound: On</button>
+      <button id="btn-pause" class="hud-btn">Pause</button>
+    </div>
+
+    <div id="toast" class="hidden" role="status" aria-live="polite"></div>
+
+    <div id="overlay-title" class="overlay">
+      <h1 class="logo">REEF <span>RESCUE</span></h1>
+      <p class="tagline">Dive into a coral reef full of drifting plastic.<br>
+        Collect it, protect the wildlife — and learn where it ends up.</p>
+      <div class="controls">
+        <span><kbd>WASD</kbd> / <kbd>Arrows</kbd> swim</span>
+        <span><kbd>P</kbd> pause</span>
+        <span><kbd>M</kbd> sound</span>
+        <span>Surface to breathe</span>
+      </div>
+      <p class="hint">Press <kbd>SPACE</kbd> to dive — or click <em>Dive in</em></p>
+      <button id="btn-dive" class="btn">Dive in</button>
+      <p class="best">Best score: <span id="best-title">0</span></p>
+    </div>
+
+    <div id="overlay-gameover" class="overlay hidden">
+      <h2 id="gameover-title">Out of oxygen…</h2>
+      <p id="gameover-sub">The reef still needs you.</p>
+      <p class="hint">Press <kbd>SPACE</kbd> to see your dive report</p>
+    </div>
+
+    <div id="overlay-result" class="overlay hidden">
+      <h2 id="result-title">Dive report</h2>
+      <p id="result-sub" class="muted"></p>
+      <div id="result-body">
+        <div id="result-stats"></div>
+        <div class="facts" id="result-facts"></div>
+      </div>
+      <p id="result-impact"></p>
+      <div class="btn-row">
+        <button id="btn-again" class="btn">Dive again</button>
+        <button id="btn-title" class="btn btn-ghost">Back to title</button>
+      </div>
+      <p class="hint">Press <kbd>R</kbd> to dive again · <kbd>T</kbd> for title</p>
+    </div>
+
+    <div id="overlay-pause" class="overlay hidden">
+      <h2>Paused</h2>
+      <p>Press <kbd>P</kbd> or <kbd>ESC</kbd> to resume</p>
+      <button id="btn-resume" class="btn">Resume</button>
+    </div>
+  </div>
+
+  <p id="sr-status" class="sr-only" aria-live="polite"></p>
+
+  <footer>
+    <p>Made for <strong>Technica 2026</strong> · vanilla HTML/JS canvas · built with AI assistant assistance · <a href="https://github.com/maebahesioru/reef-rescue">source on GitHub</a></p>
+  </footer>
+</main>
+
+<script src="js/config.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
