@@ -6,6 +6,8 @@ A tiny browser game about cleaning a coral reef — and learning what happens to
 
 **Play now → https://maebahesioru.github.io/reef-rescue/**
 
+**Watch the demo (1:41) → https://youtu.be/TesxHGHug8U**
+
 ## The problem
 
 Every year millions of tonnes of plastic reach the ocean. It drifts, sinks, and breaks into pieces that entangle wildlife and smother coral. Most people never see this — and the few who do, see it once, on a screen.
