@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Reef Rescue — clean the reef, protect the wildlife</title>
 <meta name="description" content="Reef Rescue: dive into a coral reef, collect drifting plastic, watch your oxygen and don't touch the wildlife. A tiny browser game made for Technica 2026.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%230072B2'/%3E%3Cpath d='M4 20c4-3 8 3 12 0s8 3 12 0' stroke='%23e8f4fb' stroke-width='2.5' fill='none'/%3E%3C/svg%3E">
@@ -11,17 +12,25 @@
 <body>
 <main id="app">
   <div id="stage">
-    <canvas id="game" width="960" height="540" role="img"
-      aria-label="Underwater game view. You control a diver collecting drifting plastic. Use arrow keys or WASD to swim. Surface at the top to breathe."></canvas>
+    <canvas id="game" width="960" height="540" tabindex="0" role="application"
+      aria-label="Reef Rescue, a playable underwater game."
+      aria-describedby="game-help"></canvas>
+    <p id="game-help" class="sr-only">You control a diver in a coral reef. Use the arrow keys or W A S D to swim. Collect drifting plastic by swimming into it. Do not touch the fish, turtles or jellyfish — it scares them and costs you air. Swim up to the surface to refill your oxygen. Press P to pause, M to turn sound on or off.</p>
 
     <div id="hud" class="hidden">
       <div class="hud-box">Score <strong id="hud-score">0</strong></div>
       <div class="hud-box">Level <strong id="hud-level">1</strong> · Cleaned <strong id="hud-items">0/12</strong></div>
-      <div class="hud-box" id="oxy-box" title="Oxygen — surface to refill">O₂ <span id="oxy-bar"><span id="oxy-fill"></span></span></div>
-      <div class="hud-box" id="hud-time">0:00</div>
+      <div class="hud-box" id="oxy-box" title="Oxygen — surface to refill">
+        <span aria-hidden="true">O₂</span>
+        <span id="oxy-bar" role="progressbar" aria-label="Oxygen left" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100" aria-valuetext="100 percent">
+          <span id="oxy-fill"></span>
+        </span>
+        <span id="oxy-num">100%</span>
+      </div>
+      <div class="hud-box" id="hud-time"><span class="sr-only">Time </span>0:00</div>
       <div class="hud-box hidden" id="hud-combo">x2</div>
       <div class="hud-spacer"></div>
-      <button id="btn-mute" class="hud-btn" aria-pressed="false">Sound: On</button>
+      <button id="btn-mute" class="hud-btn" aria-pressed="true">Sound: On</button>
       <button id="btn-pause" class="hud-btn">Pause</button>
     </div>
 
@@ -31,20 +40,26 @@
       <h1 class="logo">REEF <span>RESCUE</span></h1>
       <p class="tagline">Dive into a coral reef full of drifting plastic.<br>
         Collect it, protect the wildlife — and learn where it ends up.</p>
+      <p class="howto">Collect the plastic. Don't touch the animals. Swim up to the surface to breathe.</p>
       <div class="controls">
         <span><kbd>WASD</kbd> / <kbd>Arrows</kbd> swim</span>
         <span><kbd>P</kbd> pause</span>
         <span><kbd>M</kbd> sound</span>
         <span>Surface to breathe</span>
       </div>
-      <p class="hint">Press <kbd>SPACE</kbd> to dive — or click <em>Dive in</em></p>
-      <button id="btn-dive" class="btn">Dive in</button>
+      <div class="legend" id="legend" aria-label="What you collect and the points you get"></div>
+      <div class="btn-row">
+        <button id="btn-dive" class="btn">Dive in</button>
+        <button id="btn-options-title" class="btn btn-ghost" aria-haspopup="dialog">Options</button>
+      </div>
+      <p class="hint">Press <kbd>SPACE</kbd> to dive</p>
       <p class="best">Best score: <span id="best-title">0</span></p>
     </div>
 
     <div id="overlay-gameover" class="overlay hidden">
       <h2 id="gameover-title">Out of oxygen…</h2>
       <p id="gameover-sub">The reef still needs you.</p>
+      <button id="btn-report" class="btn">See dive report</button>
       <p class="hint">Press <kbd>SPACE</kbd> to see your dive report</p>
     </div>
 
@@ -66,18 +81,48 @@
     <div id="overlay-pause" class="overlay hidden">
       <h2>Paused</h2>
       <p>Press <kbd>P</kbd> or <kbd>ESC</kbd> to resume</p>
-      <button id="btn-resume" class="btn">Resume</button>
+      <div class="btn-row">
+        <button id="btn-resume" class="btn">Resume</button>
+        <button id="btn-options-pause" class="btn btn-ghost" aria-haspopup="dialog">Options</button>
+      </div>
+    </div>
+
+    <div id="overlay-options" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="options-title">
+      <h2 id="options-title">Options</h2>
+      <div id="options-panel" class="options">
+        <fieldset>
+          <legend>Game speed</legend>
+          <label><input type="radio" name="set-speed" value="relaxed"> <span>Relaxed — slower game, air lasts longer</span></label>
+          <label><input type="radio" name="set-speed" value="normal"> <span>Normal</span></label>
+          <label><input type="radio" name="set-speed" value="brisk"> <span>Brisk — more of a challenge</span></label>
+        </fieldset>
+        <fieldset>
+          <legend>Text size</legend>
+          <label><input type="radio" name="set-text" value="normal"> <span>Normal</span></label>
+          <label><input type="radio" name="set-text" value="large"> <span>Large</span></label>
+          <label><input type="radio" name="set-text" value="xl"> <span>Extra large</span></label>
+        </fieldset>
+        <fieldset>
+          <legend>Motion</legend>
+          <label><input type="radio" name="set-motion" value="auto"> <span>Follow my system setting</span></label>
+          <label><input type="radio" name="set-motion" value="reduce"> <span>Reduce motion</span></label>
+          <label><input type="radio" name="set-motion" value="full"> <span>Full motion</span></label>
+        </fieldset>
+      </div>
+      <button id="btn-options-close" class="btn">Done</button>
+      <p class="hint">Your choices are saved on this device. Press <kbd>ESC</kbd> to close.</p>
     </div>
   </div>
 
   <p id="sr-status" class="sr-only" aria-live="polite"></p>
 
   <footer>
-    <p>Made for <strong>Technica 2026</strong> · vanilla HTML/JS canvas · built with AI assistant assistance · <a href="https://github.com/maebahesioru/reef-rescue">source on GitHub</a></p>
+    <p>Made for <strong>Technica 2026</strong> · vanilla HTML/JS canvas · built with help from an AI assistant · <a href="https://github.com/maebahesioru/reef-rescue">source on GitHub</a></p>
   </footer>
 </main>
 
 <script src="js/config.js"></script>
+<script src="js/settings.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/entities.js"></script>
 <script src="js/game.js"></script>

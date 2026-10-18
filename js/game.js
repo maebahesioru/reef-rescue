@@ -1,7 +1,13 @@
 'use strict';
 
 /* Reef Rescue — main game: state machine, input, world, HUD, rendering.
-   States: title -> play -> gameover -> result (and paused). */
+   States: title -> play -> gameover -> result (and paused, options).
+
+   Accessibility notes:
+   - Complete playthrough is possible with the keyboard alone.
+   - Focus moves with each overlay; the canvas takes focus during play.
+   - Oxygen has a number + text label, not just a colour bar.
+   - Speed / text size / motion are player settings (see js/settings.js). */
 
 (function () {
   const cvs = document.getElementById('game');
@@ -14,20 +20,27 @@
   const $ = (id) => document.getElementById(id);
   const els = {
     hud: $('hud'), score: $('hud-score'), level: $('hud-level'), items: $('hud-items'),
-    oxyFill: $('oxy-fill'), time: $('hud-time'), combo: $('hud-combo'),
+    oxyFill: $('oxy-fill'), oxyBar: $('oxy-bar'), oxyNum: $('oxy-num'),
+    time: $('hud-time'), combo: $('hud-combo'),
     toast: $('toast'), sr: $('sr-status'),
     overlayTitle: $('overlay-title'), overlayGameover: $('overlay-gameover'),
     overlayResult: $('overlay-result'), overlayPause: $('overlay-pause'),
+    overlayOptions: $('overlay-options'),
     gameoverTitle: $('gameover-title'), gameoverSub: $('gameover-sub'),
     resultTitle: $('result-title'), resultSub: $('result-sub'), resultStats: $('result-stats'),
     resultImpact: $('result-impact'), resultFacts: $('result-facts'),
     bestTitle: $('best-title'),
     btnMute: $('btn-mute'), btnPause: $('btn-pause'), btnDive: $('btn-dive'),
     btnAgain: $('btn-again'), btnTitle: $('btn-title'), btnResume: $('btn-resume'),
+    btnReport: $('btn-report'),
+    btnOptionsTitle: $('btn-options-title'), btnOptionsPause: $('btn-options-pause'),
+    btnOptionsClose: $('btn-options-close'),
+    firstOption: document.querySelector('#options-panel input'),
+    legend: $('legend'),
   };
 
   const sfx = new Sfx();
-  const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const motionReduced = () => Settings.motionReduced();
 
   const keys = Object.create(null);
   const input = { left: false, right: false, up: false, down: false, pointer: null };
@@ -85,7 +98,7 @@
     ctx.globalAlpha = 0.07;
     ctx.fillStyle = '#eaffff';
     for (let i = 0; i < 4; i++) {
-      const sway = reduceMotion ? 0 : Math.sin(t * 0.25 + i * 1.7) * 26;
+      const sway = motionReduced() ? 0 : Math.sin(t * 0.25 + i * 1.7) * 26;
       const x0 = 120 + i * 240 + sway;
       ctx.beginPath();
       ctx.moveTo(x0, CONFIG.SURFACE_Y);
@@ -115,7 +128,7 @@
 
     // corals / seaweed / rocks
     for (const c of CORALS) {
-      const sway = reduceMotion ? 0 : Math.sin(t * 0.9 + c.phase) * 6;
+      const sway = motionReduced() ? 0 : Math.sin(t * 0.9 + c.phase) * 6;
       ctx.save();
       ctx.translate(c.x, CONFIG.SEABED_Y + 6);
       ctx.scale(c.s, c.s);
@@ -171,6 +184,15 @@
     return new Creature(type, fromLeft ? -50 : CONFIG.W + 50, rand(120, CONFIG.PLAY_BOTTOM - 30), fromLeft ? 1 : -1);
   }
 
+  /* legend: item shape + name + points, so items are never colour-only */
+  function renderLegend() {
+    if (!els.legend) return;
+    els.legend.innerHTML = GARBAGE_TYPES.map((tp) =>
+      '<span class="legend-item">' + itemIcon(tp.id, tp.color) +
+      '<span>' + tp.name + ' <span class="pts">+' + tp.points + ' pts</span></span></span>'
+    ).join('');
+  }
+
   /* ---------------- game ---------------- */
 
   class Game {
@@ -188,7 +210,6 @@
       this.comboT = 0;
       this.warnT = 0;
       this.toastT = 0;
-      this.gameoverT = 0;
       this.flashT = 0;
       this.ambT = 0;
       this.spawnT = 0;
@@ -197,6 +218,8 @@
       this.counts = {};
       this.weights = 0;
       this.co2 = 0;
+      this.oxyAnnounced = false;
+      this.optionsFrom = 'overlayTitle';
       this.best = readBest();
       this.player = new Player();
       this.garbage = [];
@@ -205,7 +228,8 @@
 
       els.bestTitle.textContent = this.best.toLocaleString();
       this.updateMuteBtn();
-      this.showOverlay('overlay-title');
+      renderLegend();
+      this.showOverlay('overlayTitle');   // BUGFIX: key name, not the DOM id ('overlay-title')
       this.spawnAmbience();
       requestAnimationFrame((ts) => this.loop(ts));
     }
@@ -215,10 +239,21 @@
     /* ---------- UI plumbing ---------- */
 
     showOverlay(id) {
-      ['overlayTitle', 'overlayGameover', 'overlayResult', 'overlayPause'].forEach((k) => {
+      ['overlayTitle', 'overlayGameover', 'overlayResult', 'overlayPause', 'overlayOptions'].forEach((k) => {
         els[k].classList.toggle('hidden', k !== id);
       });
-      els.hud.classList.toggle('hidden', id === 'overlayTitle' || id === 'overlayResult');
+      els.hud.classList.toggle('hidden', id !== null && id !== 'overlayPause' && id !== 'overlayGameover');
+      const focusMap = {
+        overlayTitle: els.btnDive,
+        overlayGameover: els.btnReport,
+        overlayResult: els.btnAgain,
+        overlayPause: els.btnResume,
+        overlayOptions: els.btnOptionsClose,
+      };
+      const target = id === null ? cvs : focusMap[id];
+      if (target) {
+        try { target.focus({ preventScroll: true }); } catch (e) { /* older browsers */ }
+      }
     }
 
     announce(msg) { els.sr.textContent = msg; }
@@ -231,7 +266,8 @@
 
     updateMuteBtn() {
       els.btnMute.textContent = sfx.muted ? 'Sound: Off' : 'Sound: On';
-      els.btnMute.setAttribute('aria-pressed', String(sfx.muted));
+      // aria-pressed reflects whether sound is ON (matches the visible label)
+      els.btnMute.setAttribute('aria-pressed', String(!sfx.muted));
     }
 
     toggleMute() {
@@ -241,6 +277,26 @@
       if (!sfx.muted) sfx.click();
       this.announce(sfx.muted ? 'Sound off' : 'Sound on');
     }
+
+    /* ---------- options ---------- */
+
+    openOptions(from) {
+      this.optionsFrom = from === 'overlayPause' ? 'overlayPause' : 'overlayTitle';
+      this.showOverlay('overlayOptions');
+      this.announce('Options opened. Game speed, text size and motion settings.');
+    }
+
+    closeOptions() {
+      if (this.optionsFrom === 'overlayPause') {
+        this.showOverlay('overlayPause');
+      } else {
+        this.state = 'title';
+        this.showOverlay('overlayTitle');
+      }
+      this.announce('Options closed.');
+    }
+
+    optionsOpen() { return !els.overlayOptions.classList.contains('hidden'); }
 
     /* ---------- state transitions ---------- */
 
@@ -262,7 +318,7 @@
       this.player = new Player();
       this.spawnT = 0;
       this.flashT = 0;
-      this.gameoverT = 0;
+      this.oxyAnnounced = false;
       this.win = false;
       this.spawnCreaturesForLevel();
       this.fillGarbage();
@@ -278,6 +334,7 @@
       this.state = 'paused';
       this.showOverlay('overlayPause');
       els.btnPause.textContent = 'Resume';
+      this.announce('Game paused.');
     }
 
     resume() {
@@ -285,12 +342,12 @@
       this.state = 'play';
       this.showOverlay(null);
       els.btnPause.textContent = 'Pause';
+      this.announce('Game resumed.');
     }
 
     endRun(win) {
       this.state = 'gameover';
       this.win = win;
-      this.gameoverT = 2.4;
       if (win) {
         sfx.win();
         els.gameoverTitle.textContent = 'Reef restored!';
@@ -300,8 +357,9 @@
         els.gameoverTitle.textContent = 'Out of oxygen…';
         els.gameoverSub.textContent = 'The reef still needs you. Every dive counts!';
       }
+      // no auto-advance: the player opens the report when ready (SPACE or the button)
       this.showOverlay('overlayGameover');
-      this.announce(win ? 'You restored the reef!' : 'Out of oxygen.');
+      this.announce(win ? 'You restored the reef! Press Space for your dive report.' : 'Out of oxygen. Press Space for your dive report.');
     }
 
     toResult() {
@@ -319,7 +377,7 @@
         : 'Your oxygen ran out — but your dive still made a difference.';
 
       // NOTE: innerHTML below is built only from hard-coded constants
-      // (GARBAGE_TYPES names/colours, FACTS strings) and numbers computed
+      // (GARBAGE_TYPES names/colours/icons, FACTS strings) and numbers computed
       // locally — no user input ever reaches it, so there is no XSS vector.
       let rows = '';
       let anyCount = 0;
@@ -327,17 +385,17 @@
         const c = this.counts[tp.id] || 0;
         if (!c) continue;
         anyCount += c;
-        rows += '<div class="stat-row"><span class="chip" style="background:' + tp.color + '"></span>' +
+        rows += '<div class="stat-row"><span class="chip">' + itemIcon(tp.id, tp.color) + '</span>' +
           '<span class="stat-name">' + tp.name + ' ×' + c + '</span>' +
           '<span class="stat-val">' + (c * tp.weight).toLocaleString() + ' g</span></div>';
       }
-      rows += '<div class="stat-row total"><span class="chip" style="background:#e8f4fb"></span>' +
+      rows += '<div class="stat-row total"><span class="chip">' + UI_ICONS.check + '</span>' +
         '<span class="stat-name">Total collected</span>' +
         '<span class="stat-val">' + anyCount + ' items · ' + Math.round(this.weights).toLocaleString() + ' g</span></div>';
-      rows += '<div class="stat-row"><span class="chip" style="background:#F0E442"></span>' +
+      rows += '<div class="stat-row"><span class="chip">' + UI_ICONS.star + '</span>' +
         '<span class="stat-name">Score</span><span class="stat-val">' + this.score.toLocaleString() + '</span></div>';
-      rows += '<div class="stat-row"><span class="chip" style="background:#009E73"></span>' +
-        '<span class="stat-name">Depth reached</span><span class="stat-val">Level ' + this.level + ' of ' + CONFIG.MAX_LEVEL + '</span></div>';
+      rows += '<div class="stat-row"><span class="chip">' + UI_ICONS.depth + '</span>' +
+        '<span class="stat-name">Reef zone reached</span><span class="stat-val">Level ' + this.level + ' of ' + CONFIG.MAX_LEVEL + '</span></div>';
       els.resultStats.innerHTML = rows;
 
       const co2 = Math.round(this.co2);
@@ -410,7 +468,7 @@
       this.weights += g.type.weight;
       this.co2 += g.type.weight * g.type.co2;
       sfx.collect(this.combo);
-      const n = reduceMotion ? 4 : 10;
+      const n = motionReduced() ? 4 : 10;
       for (let i = 0; i < n; i++) this.particles.push(makeSpark(g.x, g.y, g.type.color));
       if (this.items >= this.levelCfg().target) this.levelUp();
     }
@@ -439,7 +497,7 @@
       while (this.creatures.length < cfg.creatures) this.creatures.push(makeCreature());
       sfx.levelUp();
       this.toast('Level ' + this.level + ' — stronger current, more plastic! +' + CONFIG.OXY_BONUS_PER_LEVEL + ' O₂', 2.6);
-      this.announce('Level ' + this.level + ' started.');
+      this.announce('Level ' + this.level + ' started. Collect ' + cfg.target + ' more items.');
       for (let i = 0; i < 16; i++) this.particles.push(makeSpark(this.player.x, this.player.y, '#56B4E9'));
     }
 
@@ -450,7 +508,7 @@
 
       // ambient bubbles (all states)
       this.ambT -= dt;
-      if (this.ambT <= 0 && this.particles.length < (reduceMotion ? 60 : 220)) {
+      if (this.ambT <= 0 && this.particles.length < (motionReduced() ? 60 : 220)) {
         this.ambT = rand(0.18, 0.5);
         this.particles.push(makeBubble(rand(10, CONFIG.W - 10), CONFIG.H - rand(0, 30), rand(1.5, 4)));
       }
@@ -468,30 +526,29 @@
         while (this.creatures.length < 5) this.creatures.push(makeCreature());
         return;
       }
-      if (this.state === 'gameover') {
-        this.gameoverT -= dt;
-        if (this.gameoverT <= 0) this.toResult();
-        return;
-      }
       if (this.state !== 'play') return;
 
-      this.runT += dt;
+      // Game-speed setting scales the whole simulation: slower speed also means
+      // oxygen lasts longer, which makes "Relaxed" genuinely easier.
+      const gdt = dt * Settings.speed();
+
+      this.runT += gdt;
 
       input.left = !!(keys.ArrowLeft || keys.KeyA);
       input.right = !!(keys.ArrowRight || keys.KeyD);
       input.up = !!(keys.ArrowUp || keys.KeyW);
       input.down = !!(keys.ArrowDown || keys.KeyS);
-      this.player.update(dt, input);
+      this.player.update(gdt, input);
 
-      if (!reduceMotion && Math.random() < dt * 5) {
+      if (!motionReduced() && Math.random() < gdt * 5) {
         this.particles.push(makeBubble(this.player.x - this.player.face * 6, this.player.y - 18, rand(1.4, 3)));
       }
 
       // oxygen
       if (this.player.atSurface) {
-        this.oxygen = Math.min(CONFIG.OXY_MAX, this.oxygen + CONFIG.OXY_REFILL * dt);
+        this.oxygen = Math.min(CONFIG.OXY_MAX, this.oxygen + CONFIG.OXY_REFILL * gdt);
       } else {
-        this.oxygen -= CONFIG.OXY_DRAIN * this.levelCfg().drainMult * dt;
+        this.oxygen -= CONFIG.OXY_DRAIN * this.levelCfg().drainMult * gdt;
       }
       if (this.oxygen <= 30) {
         this.warnT -= dt;
@@ -501,19 +558,19 @@
 
       // combo window
       if (this.comboT > 0) {
-        this.comboT -= dt;
+        this.comboT -= gdt;
         if (this.comboT <= 0) this.combo = 0;
       }
 
       // garbage
       const cfg = this.levelCfg();
-      this.spawnT -= dt;
+      this.spawnT -= gdt;
       if (this.spawnT <= 0 && this.garbage.length < cfg.maxItems) {
         this.spawnT = cfg.spawnEvery;
         this.spawnGarbage();
       }
       for (const g of this.garbage) {
-        g.update(dt);
+        g.update(gdt);
         if (!g.dead && dist2(g.x, g.y, this.player.x, this.player.y) < Math.pow(g.r + CONFIG.PLAYER_R, 2)) {
           this.collect(g);
         }
@@ -522,7 +579,7 @@
 
       // creatures
       for (const c of this.creatures) {
-        c.update(dt, this.player);
+        c.update(gdt, this.player);
         if (this.player.invuln <= 0 && dist2(c.x, c.y, this.player.x, this.player.y) < Math.pow(c.r + CONFIG.PLAYER_R, 2)) {
           this.hurt(c);
         }
@@ -540,8 +597,24 @@
       els.level.textContent = this.level;
       els.items.textContent = this.items + '/' + this.levelCfg().target;
       const pct = Math.max(0, Math.min(1, this.oxygen / CONFIG.OXY_MAX));
+      const pctRounded = Math.round(pct * 100);
       els.oxyFill.style.width = (pct * 100).toFixed(1) + '%';
       els.oxyFill.className = pct > 0.5 ? '' : (pct > 0.25 ? 'low' : 'crit');
+
+      // number + word, so the oxygen state is never colour-only
+      const label = pct > 0.5 ? '' : (pct > 0.25 ? ' LOW' : ' CRITICAL');
+      els.oxyNum.textContent = pctRounded + '%' + label;
+      els.oxyNum.className = pct > 0.5 ? '' : (pct > 0.25 ? 'low' : 'crit');
+      els.oxyBar.setAttribute('aria-valuenow', String(pctRounded));
+      els.oxyBar.setAttribute('aria-valuetext', pctRounded + ' percent' + (pct > 0.5 ? '' : (pct > 0.25 ? ', low' : ', critical')));
+
+      if (!this.oxyAnnounced && pct <= 0.3) {
+        this.oxyAnnounced = true;
+        this.announce('Oxygen low. Swim up to the surface to breathe.');
+      } else if (pct > 0.5) {
+        this.oxyAnnounced = false;
+      }
+
       const m = Math.floor(this.runT / 60);
       const s = Math.floor(this.runT % 60);
       els.time.textContent = m + ':' + String(s).padStart(2, '0');
@@ -563,8 +636,14 @@
       for (const c of this.creatures) c.draw(ctx);
 
       if (this.state === 'play' || this.state === 'paused' || this.state === 'gameover') {
-        const blink = this.player.invuln > 0 && Math.floor(this.t * 12) % 2 === 0;
-        if (!blink) this.player.draw(ctx);
+        ctx.save();
+        if (this.player.invuln > 0) {
+          // reduced motion: steady fade instead of a blink
+          if (motionReduced()) ctx.globalAlpha = 0.45;
+          else if (Math.floor(this.t * 12) % 2 === 0) ctx.globalAlpha = 0;
+        }
+        this.player.draw(ctx);
+        ctx.restore();
       }
 
       for (const p of this.particles) p.draw(ctx);
@@ -581,10 +660,11 @@
         ctx.restore();
       }
 
-      // low-oxygen tint pulse (no shake)
+      // low-oxygen tint pulse (no shake; steady tint under reduced motion)
       if (this.state === 'play' && this.oxygen < 25) {
+        const a = motionReduced() ? 0.1 : Math.max(0, 0.07 + 0.05 * Math.sin(this.t * 4));
         ctx.save();
-        ctx.globalAlpha = Math.max(0, 0.07 + 0.05 * Math.sin(this.t * 4));
+        ctx.globalAlpha = a;
         ctx.fillStyle = '#D55E00';
         ctx.fillRect(0, 0, CONFIG.W, CONFIG.H);
         ctx.restore();
@@ -617,16 +697,29 @@
   /* ---------------- boot ---------------- */
 
   const game = new Game();
-  window.__reef = game;   // exposed for debugging / automated tests
+  window.__reef = game;                    // exposed for debugging / automated tests
+  window.__reefSettings = Settings;        // exposed for automated accessibility tests
+
+  const navKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
 
   window.addEventListener('keydown', (e) => {
-    const isBtn = e.target && e.target.tagName === 'BUTTON';
-    if (!isBtn && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].indexOf(e.code) !== -1) {
-      e.preventDefault();
-    }
+    const t = e.target;
+    const isBtn = t && t.tagName === 'BUTTON';
+    const isTyping = t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    // arrows never activate buttons, so keep them for the game — but leave them
+    // alone on form controls (radio groups use arrow keys natively)
+    if (navKeys.indexOf(e.code) !== -1 && !isTyping) e.preventDefault();
+    if (e.code === 'Space' && !isBtn && !isTyping) e.preventDefault();
+
     keys[e.code] = true;
     sfx.unlock();
     if (e.code === 'KeyM') { game.toggleMute(); return; }
+
+    if (game.optionsOpen()) {                       // options overlay swallows game keys
+      if (e.code === 'Escape' && !e.repeat) game.closeOptions();
+      return;
+    }
+
     if (isBtn && (e.code === 'Space' || e.code === 'Enter')) return;  // let the button handle it
     if (e.repeat) return;
     if (game.state === 'title') {
@@ -648,6 +741,22 @@
     input.pointer = null;
   });
 
+  // keep Tab inside the options dialog while it is open
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab' || els.overlayOptions.classList.contains('hidden')) return;
+    const list = els.overlayOptions.querySelectorAll('button, input, [href], [tabindex]:not([tabindex="-1"])');
+    if (!list.length) return;
+    const first = list[0];
+    const last = list[list.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+
+  // pausing when the tab is hidden stops oxygen draining while you are away
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && game.state === 'play') game.pause();
+  });
+
   /* optional pointer / touch steering */
   function toCanvas(e) {
     const r = cvs.getBoundingClientRect();
@@ -665,15 +774,22 @@
 
   cvs.addEventListener('click', () => {
     if (game.state === 'title') game.startRun();
-    else if (game.state === 'gameover') game.toResult();
+  });
+
+  els.overlayGameover.addEventListener('click', (e) => {
+    if (!e.target.closest('button') && game.state === 'gameover') game.toResult();
   });
 
   els.btnDive.addEventListener('click', () => { sfx.unlock(); game.startRun(); });
   els.btnAgain.addEventListener('click', () => { sfx.unlock(); game.startRun(); });
   els.btnTitle.addEventListener('click', () => game.toTitle());
+  els.btnReport.addEventListener('click', () => game.toResult());
   els.btnPause.addEventListener('click', () => {
     if (game.state === 'paused') game.resume(); else game.pause();
   });
   els.btnResume.addEventListener('click', () => game.resume());
   els.btnMute.addEventListener('click', () => game.toggleMute());
+  els.btnOptionsTitle.addEventListener('click', () => game.openOptions('overlayTitle'));
+  els.btnOptionsPause.addEventListener('click', () => game.openOptions('overlayPause'));
+  els.btnOptionsClose.addEventListener('click', () => game.closeOptions());
 })();

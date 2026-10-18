@@ -7,6 +7,43 @@ function rand(a, b) { return a + Math.random() * (b - a); }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 function dist2(ax, ay, bx, by) { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; }
 
+/* Inline SVG icons so every item keeps its identity without colour:
+   the legend and the dive report show a distinct shape per item type. */
+const ITEM_ICONS = {
+  bottle: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<rect x="8.5" y="8" width="7" height="13" rx="2.6" fill="COLOR"/>' +
+    '<rect x="10.2" y="3" width="3.6" height="5.4" rx="1.1" fill="COLOR"/>' +
+    '<rect x="10.4" y="11" width="1.8" height="7" rx="0.9" fill="rgba(255,255,255,0.5)"/></svg>',
+  bag: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M6 9.5h12l-1.1 10.8H7.1L6 9.5z" fill="COLOR"/>' +
+    '<path d="M9.2 9.5a2.8 2.8 0 0 1 5.6 0" fill="none" stroke="COLOR" stroke-width="1.8"/></svg>',
+  straw: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M7.5 20.5 14.6 4.4" fill="none" stroke="COLOR" stroke-width="3.2" stroke-linecap="round"/>' +
+    '<path d="M13 4h4.6" fill="none" stroke="COLOR" stroke-width="3.2" stroke-linecap="round"/></svg>',
+  can: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<rect x="7" y="5" width="10" height="15" rx="2.4" fill="COLOR"/>' +
+    '<ellipse cx="12" cy="5.7" rx="5" ry="1.8" fill="rgba(255,255,255,0.75)"/>' +
+    '<rect x="9.4" y="10" width="2" height="7" rx="1" fill="rgba(255,255,255,0.55)"/></svg>',
+  net: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<circle cx="12" cy="12" r="8.2" fill="none" stroke="COLOR" stroke-width="2.2"/>' +
+    '<path d="M3.8 12h16.4M12 3.8v16.4M6.2 6.2l11.6 11.6M17.8 6.2 6.2 17.8" stroke="COLOR" stroke-width="1" fill="none"/></svg>',
+};
+
+const UI_ICONS = {
+  check: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M4 12.5l5 5L20 6.5" fill="none" stroke="#8fe3c0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  star: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.8L12 16.9l-5.3 2.7 1.1-5.8L3.5 9.7l5.9-.8z" fill="#F0E442"/></svg>',
+  depth: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M12 4v13" stroke="#56b4e9" stroke-width="2.6" stroke-linecap="round"/>' +
+    '<path d="M7 12.5l5 5 5-5" fill="none" stroke="#56b4e9" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+};
+
+function itemIcon(id, color) {
+  const tpl = ITEM_ICONS[id];
+  return tpl ? tpl.split('COLOR').join(color || 'currentColor') : '';
+}
+
 function roundRect(ctx, x, y, w, h, r) {
   if (typeof ctx.roundRect === 'function') { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); return; }
   ctx.beginPath();
